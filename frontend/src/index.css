@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 120 100% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 120 100% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 120 100% 9%;
+
+    --primary: 117 81% 65%;
+    --primary-foreground: 120 100% 9%;
+
+    --secondary: 90 18% 90%;
+    --secondary-foreground: 120 100% 9%;
+
+    --muted: 90 18% 90%;
+    --muted-foreground: 120 10% 40%;
+
+    --accent: 79 100% 50%;
+    --accent-foreground: 120 100% 9%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 117 81% 65%;
+    --success-foreground: 120 100% 9%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 120 100% 9%;
+
+    --border: 90 18% 90%;
+    --input: 90 18% 90%;
+    --ring: 117 81% 65%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 120 100% 9%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 117 81% 65%;
+    --sidebar-primary-foreground: 120 100% 9%;
+    --sidebar-accent: 120 50% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 120 50% 15%;
+    --sidebar-ring: 117 81% 65%;
+    --sidebar-muted: 120 10% 60%;
+
+    --chart-income: 117 81% 65%;
+    --chart-expense: 0 84% 60%;
+    --chart-1: 117 81% 65%;
+    --chart-2: 79 100% 50%;
+    --chart-3: 173 80% 40%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 340 75% 55%;
+  }
+
+  .dark {
+    --background: 120 100% 5%;
+    --foreground: 0 0% 100%;
+
+    --card: 120 100% 9%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 120 100% 9%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 117 81% 65%;
+    --primary-foreground: 120 100% 9%;
+
+    --secondary: 120 50% 15%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 120 50% 15%;
+    --muted-foreground: 120 10% 60%;
+
+    --accent: 79 100% 50%;
+    --accent-foreground: 120 100% 9%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 117 81% 65%;
+    --success-foreground: 120 100% 9%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 120 100% 9%;
+
+    --border: 120 50% 15%;
+    --input: 120 50% 15%;
+    --ring: 117 81% 65%;
+
+    --sidebar-background: 120 100% 5%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 117 81% 65%;
+    --sidebar-primary-foreground: 120 100% 9%;
+    --sidebar-accent: 120 50% 12%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 120 50% 12%;
+    --sidebar-ring: 117 81% 65%;
+    --sidebar-muted: 120 10% 50%;
+
+    --chart-income: 117 81% 65%;
+    --chart-expense: 0 84% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50;
+  }
+  
+  .card-shadow {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  }
+
+  .card-shadow-lg {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  }
+
+  .text-green-number {
+    color: hsl(117deg 50.45% 49.51%);
+  }
+}
+
+/* Remove outline dos links do sidebar */
+aside nav a,
+aside nav a:focus,
+aside nav a:focus-visible,
+aside nav a:active,
+aside nav a:focus-within {
+  outline: none !important;
+  outline-width: 0 !important;
+  outline-style: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Remove outline de todos os elementos clicáveis no sidebar */
+aside *:focus,
+aside *:focus-visible,
+aside *:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
