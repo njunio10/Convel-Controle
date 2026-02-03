@@ -1,4 +1,5 @@
 import { User, LogOut, PanelLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,16 +8,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 export function AppHeader() {
   const { isCollapsed, toggleSidebar } = useSidebar();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Aqui você pode adicionar a lógica de logout
-    // Por exemplo: limpar tokens, redirecionar para login, etc.
-    console.log("Logout realizado");
-    // window.location.href = "/login";
+  const getInitials = (name?: string | null) => {
+    if (!name) return null;
+    const parts = name.trim().split(" ").filter(Boolean);
+    const initials = parts
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+    return initials || null;
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -40,7 +52,7 @@ export function AppHeader() {
             <button className="flex items-center gap-2 ">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                  <User className="h-4 w-4" />
+                  {getInitials(user?.name) ?? <User className="h-4 w-4" />}
                 </AvatarFallback>
               </Avatar>
             </button>

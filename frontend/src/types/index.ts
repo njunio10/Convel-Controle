@@ -15,10 +15,12 @@ export type ClientOrigin = "promocao" | "indicacao" | "evento" | "redes_sociais"
 export interface Client {
   id: string;
   name: string;
+  responsibleName: string;
   email: string;
   phone: string;
   origin: ClientOrigin;
   referredBy?: string;
+  monthlyFee: number | null;
   notes?: string;
   createdAt: Date;
 }
@@ -28,10 +30,12 @@ export type LeadStatus = "novo" | "em_contato" | "convertido" | "perdido";
 export interface Lead {
   id: string;
   name: string;
+  responsibleName: string;
   email: string;
   phone: string;
   status: LeadStatus;
-  source?: string;
+  origin: ClientOrigin;
+  referredBy?: string;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;

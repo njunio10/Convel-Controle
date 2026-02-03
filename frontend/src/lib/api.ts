@@ -1,9 +1,16 @@
 import axios from 'axios';
 import type { Client, Lead, Transaction } from '@/types';
+import { authStorage } from './authStorage';
 
 // Configuração base do axios para comunicação com o backend Laravel
+const resolvedBaseURL =
+  import.meta.env.VITE_API_URL ??
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}/controle_convel/Convel-Controle/backend/public/api`
+    : 'http://127.0.0.1:8000/api');
+
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api',
+  baseURL: resolvedBaseURL,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -13,11 +20,10 @@ const api = axios.create({
 // Interceptor para requisições
 api.interceptors.request.use(
   (config) => {
-    // Aqui você pode adicionar tokens de autenticação se necessário
-    // const token = localStorage.getItem('token');
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+    const token = authStorage.getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -126,10 +132,22 @@ export const leadsApi = {
 
 // ==================== TRANSAÇÕES (CASH FLOW) ====================
 
+export interface TransactionsQuery {
+  type?: Transaction['type'];
+  startDate?: string;
+  endDate?: string;
+}
+
 export const transactionsApi = {
   // Listar todas as transações
-  getAll: async (): Promise<Transaction[]> => {
-    const response = await api.get<ApiResponse<Transaction[]>>('/transactions');
+  getAll: async (query?: TransactionsQuery): Promise<Transaction[]> => {
+    const response = await api.get<ApiResponse<Transaction[]>>('/transactions', {
+      params: {
+        type: query?.type,
+        start_date: query?.startDate,
+        end_date: query?.endDate,
+      },
+    });
     return response.data.data;
   },
 
@@ -154,6 +172,21 @@ export const transactionsApi = {
   // Deletar transação
   delete: async (id: string): Promise<void> => {
     await api.delete(`/transactions/${id}`);
+  },
+
+  // Resumo do fluxo de caixa
+  getSummary: async (query?: TransactionsQuery): Promise<{ income: number; expense: number; balance: number }> => {
+    const response = await api.get<ApiResponse<{ income: number; expense: number; balance: number }>>(
+      '/transactions/summary',
+      {
+        params: {
+          type: query?.type,
+          start_date: query?.startDate,
+          end_date: query?.endDate,
+        },
+      }
+    );
+    return response.data.data;
   },
 };
 

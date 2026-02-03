@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, EmptyState, StatCard } from "@/components/ui/page-components";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -29,34 +39,65 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, UserPlus, Search, Mail, Phone, Sparkles, Clock, CheckCircle, XCircle, Eye, Pencil } from "lucide-react";
-import { Lead, LeadStatus } from "@/types";
-import { mockLeads, leadStatusLabels, leadStatusColors } from "@/data/mockData";
+import { useToast } from "@/components/ui/use-toast";
+import {
+  Plus,
+  UserPlus,
+  Search,
+  Mail,
+  Phone,
+  Sparkles,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Eye,
+  Pencil,
+  Trash2,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+} from "lucide-react";
+import { Lead, LeadStatus, ClientOrigin } from "@/types";
+import { leadStatusLabels, leadStatusColors } from "@/data/leadStatus";
+import { clientOriginLabels } from "@/data/clientOrigins";
+import { leadsApi } from "@/lib/api";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export default function Leads() {
-  const [leads, setLeads] = useState<Lead[]>(mockLeads);
+  const { toast } = useToast();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [newLead, setNewLead] = useState({
     name: "",
+    responsibleName: "",
     email: "",
     phone: "",
-    source: "",
+    origin: "" as ClientOrigin,
+    referredBy: "",
     notes: "",
   });
   const [editLead, setEditLead] = useState({
     name: "",
+    responsibleName: "",
     email: "",
     phone: "",
-    source: "",
+    origin: "" as ClientOrigin,
+    referredBy: "",
     notes: "",
     status: "novo" as LeadStatus,
   });
@@ -69,6 +110,13 @@ export default function Leads() {
     return matchesSearch && matchesStatus;
   });
 
+  const totalCount = filteredLeads.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const pagedLeads = filteredLeads.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   const statusCounts = {
     novo: leads.filter((l) => l.status === "novo").length,
     em_contato: leads.filter((l) => l.status === "em_contato").length,
@@ -76,22 +124,73 @@ export default function Leads() {
     perdido: leads.filter((l) => l.status === "perdido").length,
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const normalizeLead = (lead: Lead): Lead => ({
+    ...lead,
+    createdAt: new Date(lead.createdAt),
+    updatedAt: new Date(lead.updatedAt),
+  });
+
+  const loadLeads = async () => {
+    setIsLoading(true);
+    try {
+      const data = await leadsApi.getAll();
+      setLeads(data.map(normalizeLead));
+    } catch (error) {
+      console.error("Erro ao carregar leads:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const lead: Lead = {
-      id: Date.now().toString(),
-      name: newLead.name,
-      email: newLead.email,
-      phone: newLead.phone,
-      status: "novo",
-      source: newLead.source || undefined,
-      notes: newLead.notes || undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setLeads([lead, ...leads]);
-    setNewLead({ name: "", email: "", phone: "", source: "", notes: "" });
-    setIsDialogOpen(false);
+    setIsSubmitting(true);
+    try {
+      await leadsApi.create({
+        name: newLead.name,
+        responsibleName: newLead.responsibleName,
+        email: newLead.email,
+        phone: newLead.phone,
+        status: "novo",
+        origin: newLead.origin,
+        referredBy: newLead.origin === "indicacao" ? newLead.referredBy || undefined : undefined,
+        notes: newLead.notes || undefined,
+      });
+      toast({
+        title: "Lead cadastrado",
+        description: "O lead foi adicionado com sucesso.",
+      });
+      setNewLead({
+        name: "",
+        responsibleName: "",
+        email: "",
+        phone: "",
+        origin: "" as ClientOrigin,
+        referredBy: "",
+        notes: "",
+      });
+      setIsDialogOpen(false);
+      await loadLeads();
+    } catch (error) {
+      console.error("Erro ao criar lead:", error);
+      toast({
+        title: "Erro ao adicionar lead",
+        description: "Verifique os dados e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
 
@@ -99,9 +198,11 @@ export default function Leads() {
     setSelectedLead(lead);
     setEditLead({
       name: lead.name,
+      responsibleName: lead.responsibleName,
       email: lead.email,
       phone: lead.phone,
-      source: lead.source || "",
+      origin: lead.origin,
+      referredBy: lead.referredBy || "",
       notes: lead.notes || "",
       status: lead.status,
     });
@@ -109,27 +210,78 @@ export default function Leads() {
     setIsViewDialogOpen(true);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLead) return;
 
-    setLeads(leads.map(l =>
-      l.id === selectedLead.id
-        ? {
-            ...l,
-            name: editLead.name,
-            email: editLead.email,
-            phone: editLead.phone,
-            source: editLead.source || undefined,
-            notes: editLead.notes || undefined,
-            status: editLead.status,
-            updatedAt: new Date(),
-          }
-        : l
-    ));
-    setIsEditMode(false);
-    setIsViewDialogOpen(false);
+    setIsSubmitting(true);
+    try {
+      await leadsApi.update(selectedLead.id, {
+        name: editLead.name,
+        responsibleName: editLead.responsibleName,
+        email: editLead.email,
+        phone: editLead.phone,
+        origin: editLead.origin,
+        referredBy: editLead.origin === "indicacao" ? editLead.referredBy || undefined : undefined,
+        notes: editLead.notes || undefined,
+        status: editLead.status,
+      });
+      toast({
+        title: "Lead atualizado",
+        description: "As alterações foram salvas com sucesso.",
+      });
+      setIsEditMode(false);
+      setIsViewDialogOpen(false);
+      await loadLeads();
+    } catch (error) {
+      console.error("Erro ao atualizar lead:", error);
+      toast({
+        title: "Erro ao atualizar lead",
+        description: "Verifique os dados e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  const openDeleteDialog = (lead: Lead) => {
+    setDeleteTarget(lead);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async (leadId: string) => {
+    setIsSubmitting(true);
+    try {
+      await leadsApi.delete(leadId);
+      await loadLeads();
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("Erro ao excluir lead:", error);
+      toast({
+        title: "Erro ao excluir lead",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadLeads();
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterStatus, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <AppLayout>
@@ -146,7 +298,7 @@ export default function Leads() {
                 Novo Lead
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Adicionar Lead</DialogTitle>
               </DialogHeader>
@@ -158,6 +310,17 @@ export default function Leads() {
                     value={newLead.name}
                     onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
                     placeholder="Nome completo"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="responsibleName">Nome do responsável</Label>
+                  <Input
+                    id="responsibleName"
+                    value={newLead.responsibleName}
+                    onChange={(e) => setNewLead({ ...newLead, responsibleName: e.target.value })}
+                    placeholder="Nome do responsável"
                     required
                   />
                 </div>
@@ -179,7 +342,9 @@ export default function Leads() {
                     <Input
                       id="phone"
                       value={newLead.phone}
-                      onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                      onChange={(e) =>
+                        setNewLead({ ...newLead, phone: formatPhone(e.target.value) })
+                      }
                       placeholder="(00) 00000-0000"
                       required
                     />
@@ -187,14 +352,42 @@ export default function Leads() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="source">Origem</Label>
-                  <Input
-                    id="source"
-                    value={newLead.source}
-                    onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
-                    placeholder="Ex: Google Ads, Instagram, etc."
-                  />
+                  <Label htmlFor="origin">Origem</Label>
+                  <Select
+                    value={newLead.origin}
+                    onValueChange={(value: ClientOrigin) =>
+                      setNewLead({ ...newLead, origin: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Como conheceu?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(clientOriginLabels).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {newLead.origin === "indicacao" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="space-y-2"
+                  >
+                    <Label htmlFor="referredBy">Quem indicou?</Label>
+                    <Input
+                      id="referredBy"
+                      value={newLead.referredBy}
+                      onChange={(e) => setNewLead({ ...newLead, referredBy: e.target.value })}
+                      placeholder="Nome de quem indicou"
+                    />
+                  </motion.div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="notes">Observações</Label>
@@ -207,7 +400,7 @@ export default function Leads() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
                   Adicionar Lead
                 </Button>
               </form>
@@ -217,7 +410,7 @@ export default function Leads() {
 
         {/* View/Edit Lead Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {isEditMode ? (
@@ -246,6 +439,18 @@ export default function Leads() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="edit-responsibleName">Nome do responsável</Label>
+                  <Input
+                    id="edit-responsibleName"
+                    value={editLead.responsibleName}
+                    onChange={(e) =>
+                      setEditLead({ ...editLead, responsibleName: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-email">E-mail</Label>
@@ -262,20 +467,45 @@ export default function Leads() {
                     <Input
                       id="edit-phone"
                       value={editLead.phone}
-                      onChange={(e) => setEditLead({ ...editLead, phone: e.target.value })}
+                      onChange={(e) =>
+                        setEditLead({ ...editLead, phone: formatPhone(e.target.value) })
+                      }
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="edit-source">Origem</Label>
-                  <Input
-                    id="edit-source"
-                    value={editLead.source}
-                    onChange={(e) => setEditLead({ ...editLead, source: e.target.value })}
-                  />
+                  <Label htmlFor="edit-origin">Origem</Label>
+                  <Select
+                    value={editLead.origin}
+                    onValueChange={(value: ClientOrigin) =>
+                      setEditLead({ ...editLead, origin: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(clientOriginLabels).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {editLead.origin === "indicacao" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-referredBy">Quem indicou?</Label>
+                    <Input
+                      id="edit-referredBy"
+                      value={editLead.referredBy}
+                      onChange={(e) => setEditLead({ ...editLead, referredBy: e.target.value })}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="edit-status">Status</Label>
@@ -309,10 +539,12 @@ export default function Leads() {
                 </div>
 
                 <DialogFooter className="gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsEditMode(false)}>
+                  <Button type="button" variant="outline" onClick={() => setIsEditMode(false)} disabled={isSubmitting}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Salvar Alterações</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    Salvar Alterações
+                  </Button>
                 </DialogFooter>
               </form>
             ) : (
@@ -327,6 +559,11 @@ export default function Leads() {
                       <Badge className={cn("font-medium border pointer-events-none", leadStatusColors[selectedLead.status])}>
                         {leadStatusLabels[selectedLead.status]}
                       </Badge>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground">Responsável</p>
+                      <p className="text-sm text-foreground">{selectedLead.responsibleName}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -347,7 +584,9 @@ export default function Leads() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 rounded-lg bg-muted/50">
                         <p className="text-xs text-muted-foreground">Origem</p>
-                        <p className="text-sm text-foreground">{selectedLead.source || "—"}</p>
+                        <p className="text-sm text-foreground">
+                          {clientOriginLabels[selectedLead.origin]}
+                        </p>
                       </div>
                       <div className="p-3 rounded-lg bg-muted/50">
                         <p className="text-xs text-muted-foreground">Última atualização</p>
@@ -356,6 +595,13 @@ export default function Leads() {
                         </p>
                       </div>
                     </div>
+
+                    {selectedLead.origin === "indicacao" && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground">Quem indicou?</p>
+                        <p className="text-sm text-foreground">{selectedLead.referredBy || "—"}</p>
+                      </div>
+                    )}
 
                     <div className="p-3 rounded-lg bg-muted/50">
                       <p className="text-xs text-muted-foreground">Data de Cadastro</p>
@@ -383,6 +629,26 @@ export default function Leads() {
             )}
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta ação não poderá ser desfeita. O lead será removido permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteTarget && handleDelete(deleteTarget.id)}
+                disabled={isSubmitting}
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-4 mb-8">
@@ -444,7 +710,11 @@ export default function Leads() {
         </div>
 
         {/* Leads Table */}
-        {filteredLeads.length === 0 ? (
+        {isLoading ? (
+          <div className="rounded-xl border bg-card card-shadow p-8 text-center text-muted-foreground">
+            Carregando leads...
+          </div>
+        ) : filteredLeads.length === 0 ? (
           <EmptyState
             icon={<UserPlus className="h-8 w-8 text-muted-foreground" />}
             title="Nenhum lead encontrado"
@@ -466,12 +736,12 @@ export default function Leads() {
                   <TableHead>Origem</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Atualização</TableHead>
-                  <TableHead className="w-24">Ações</TableHead>
+                      <TableHead className="w-28">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <AnimatePresence>
-                  {filteredLeads.map((lead, index) => (
+                  {pagedLeads.map((lead, index) => (
                     <motion.tr
                       key={lead.id}
                       initial={{ opacity: 0, x: -20 }}
@@ -496,7 +766,7 @@ export default function Leads() {
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {lead.source || "—"}
+                        {clientOriginLabels[lead.origin]}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -512,21 +782,92 @@ export default function Leads() {
                         {format(lead.updatedAt, "dd MMM yyyy", { locale: ptBR })}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleViewLead(lead)}
                           className="text-green-number hover:text-green-number hover:bg-primary/10"
                         >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Ver mais
+                          <Eye className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openDeleteDialog(lead)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        </div>
                       </TableCell>
                     </motion.tr>
                   ))}
                 </AnimatePresence>
               </TableBody>
             </Table>
+          </div>
+        )}
+        {totalCount > 0 && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>Mostrando {pagedLeads.length} de {totalCount}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span>Por página</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(value) => setPageSize(Number(value))}
+                  >
+                    <SelectTrigger className="h-8 w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[5, 10, 20, 50].map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <span>Página {currentPage} de {totalPages}</span>
+              </div>
+            </div>
+            <div className="flex justify-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </motion.div>

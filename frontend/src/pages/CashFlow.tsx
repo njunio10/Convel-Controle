@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, StatCard } from "@/components/ui/page-components";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -33,70 +43,163 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowDownLeft, ArrowUpRight, Plus, Wallet, TrendingUp, TrendingDown, Filter, CalendarIcon } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Plus,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Filter,
+  CalendarIcon,
+  Pencil,
+  Trash2,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+} from "lucide-react";
 import { Transaction, TransactionType } from "@/types";
-import { mockTransactions, transactionCategories } from "@/data/mockData";
-import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { transactionsApi } from "@/lib/api";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export default function CashFlow() {
-  const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [newTransaction, setNewTransaction] = useState({
     description: "",
     amount: "",
     type: "income" as TransactionType,
     category: "",
   });
-
-  const filteredTransactions = transactions.filter((t) => {
-    if (filterType !== "all" && t.type !== filterType) return false;
-    
-    if (startDate && endDate) {
-      return isWithinInterval(t.date, {
-        start: startOfDay(startDate),
-        end: endOfDay(endDate),
-      });
-    }
-    if (startDate) {
-      return t.date >= startOfDay(startDate);
-    }
-    if (endDate) {
-      return t.date <= endOfDay(endDate);
-    }
-    
-    return true;
+  const [editTransaction, setEditTransaction] = useState({
+    description: "",
+    amount: "",
+    type: "income" as TransactionType,
+    category: "",
   });
 
-  const totalIncome = filteredTransactions
-    .filter((t) => t.type === "income")
-    .reduce((acc, t) => acc + t.amount, 0);
+  const buildQuery = () => ({
+    type: filterType === "all" ? undefined : (filterType as TransactionType),
+    startDate: startDate ? format(startDate, "yyyy-MM-dd") : undefined,
+    endDate: endDate ? format(endDate, "yyyy-MM-dd") : undefined,
+  });
 
-  const totalExpense = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((acc, t) => acc + t.amount, 0);
+  const normalizeTransaction = (transaction: Transaction): Transaction => ({
+    ...transaction,
+    date: new Date(transaction.date),
+    createdAt: new Date(transaction.createdAt),
+  });
 
-  const balance = totalIncome - totalExpense;
+  const totalCount = transactions.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const pagedTransactions = transactions.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const loadTransactions = async () => {
+    setIsLoading(true);
+    try {
+      const query = buildQuery();
+      const [data, summaryData] = await Promise.all([
+        transactionsApi.getAll(query),
+        transactionsApi.getSummary(query),
+      ]);
+      setTransactions(data.map(normalizeTransaction));
+      setSummary(summaryData);
+    } catch (error) {
+      console.error("Erro ao carregar transações:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const transaction: Transaction = {
-      id: Date.now().toString(),
-      description: newTransaction.description,
-      amount: parseFloat(newTransaction.amount),
-      type: newTransaction.type,
-      category: newTransaction.category,
-      date: new Date(),
-      createdAt: new Date(),
-    };
-    setTransactions([transaction, ...transactions]);
-    setNewTransaction({ description: "", amount: "", type: "income", category: "" });
-    setIsDialogOpen(false);
+    setIsSubmitting(true);
+    try {
+      await transactionsApi.create({
+        description: newTransaction.description,
+        amount: parseFloat(newTransaction.amount),
+        type: newTransaction.type,
+        category: newTransaction.category,
+        date: new Date(),
+      });
+      setNewTransaction({ description: "", amount: "", type: "income", category: "" });
+      setIsDialogOpen(false);
+      await loadTransactions();
+    } catch (error) {
+      console.error("Erro ao criar transação:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+    setIsSubmitting(true);
+    try {
+      await transactionsApi.update(editingTransaction.id, {
+        description: editTransaction.description,
+        amount: parseFloat(editTransaction.amount),
+        type: editTransaction.type,
+        category: editTransaction.category,
+      });
+      setIsEditDialogOpen(false);
+      setEditingTransaction(null);
+      await loadTransactions();
+    } catch (error) {
+      console.error("Erro ao atualizar transação:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setEditTransaction({
+      description: transaction.description,
+      amount: String(transaction.amount),
+      type: transaction.type,
+      category: transaction.category,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (transaction: Transaction) => {
+    setDeleteTarget(transaction);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async (transactionId: string) => {
+    setIsSubmitting(true);
+    try {
+      await transactionsApi.delete(transactionId);
+      await loadTransactions();
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("Erro ao excluir transação:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const formatCurrency = (value: number) => {
@@ -110,6 +213,20 @@ export default function CashFlow() {
     setStartDate(undefined);
     setEndDate(undefined);
   };
+
+  useEffect(() => {
+    void loadTransactions();
+  }, [filterType, startDate, endDate]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, startDate, endDate, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
 
   return (
@@ -144,6 +261,7 @@ export default function CashFlow() {
                       }
                     >
                       <SelectTrigger className={cn(
+                        "focus:ring-0 focus:ring-offset-0",
                         newTransaction.type === "income"
                           ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
                           : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
@@ -200,28 +318,21 @@ export default function CashFlow() {
 
                     <div className="p-3 rounded-lg bg-muted/50">
                       <p className="text-xs text-muted-foreground mb-2">Categoria</p>
-                      <Select
+                      <Input
+                        id="category"
                         value={newTransaction.category}
-                        onValueChange={(value) =>
-                          setNewTransaction({ ...newTransaction, category: value })
+                        onChange={(e) =>
+                          setNewTransaction({ ...newTransaction, category: e.target.value })
                         }
-                      >
-                        <SelectTrigger className={cn(
+                        placeholder="Ex: Vendas"
+                        required
+                        className={cn(
                           "bg-background",
                           newTransaction.type === "income"
                             ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
                             : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
-                        )}>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {transactionCategories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                              {cat}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        )}
+                      />
                     </div>
                   </div>
                 </div>
@@ -234,31 +345,170 @@ export default function CashFlow() {
                       ? "bg-success hover:bg-success/90 text-success-foreground"
                       : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                   )}
+                  disabled={isSubmitting}
                 >
                   Adicionar {newTransaction.type === "income" ? "Entrada" : "Saída"}
                 </Button>
               </form>
             </DialogContent>
           </Dialog>
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Editar Transação</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleEditSubmit} className="space-y-4 mt-4">
+                <div className="space-y-3">
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground mb-2">Tipo</p>
+                    <Select
+                      value={editTransaction.type}
+                      onValueChange={(value: TransactionType) =>
+                        setEditTransaction({ ...editTransaction, type: value })
+                      }
+                    >
+                      <SelectTrigger className={cn(
+                        "focus:ring-0 focus:ring-offset-0",
+                        editTransaction.type === "income"
+                          ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
+                          : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
+                      )}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="income">Entrada</SelectItem>
+                        <SelectItem value="expense">Saída</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-xs text-muted-foreground mb-2">Descrição</p>
+                    <Input
+                      id="edit-description"
+                      value={editTransaction.description}
+                      onChange={(e) =>
+                        setEditTransaction({ ...editTransaction, description: e.target.value })
+                      }
+                      placeholder="Ex: Venda de produto"
+                      required
+                      className={cn(
+                        "bg-background",
+                        editTransaction.type === "income"
+                          ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
+                          : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground mb-2">Valor</p>
+                      <Input
+                        id="edit-amount"
+                        type="number"
+                        step="0.01"
+                        value={editTransaction.amount}
+                        onChange={(e) =>
+                          setEditTransaction({ ...editTransaction, amount: e.target.value })
+                        }
+                        placeholder="0,00"
+                        required
+                        className={cn(
+                          "bg-background",
+                          editTransaction.type === "income"
+                            ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
+                            : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
+                        )}
+                      />
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <p className="text-xs text-muted-foreground mb-2">Categoria</p>
+                      <Input
+                        id="edit-category"
+                        value={editTransaction.category}
+                        onChange={(e) =>
+                          setEditTransaction({ ...editTransaction, category: e.target.value })
+                        }
+                        placeholder="Ex: Vendas"
+                        required
+                        className={cn(
+                          "bg-background",
+                          editTransaction.type === "income"
+                            ? "border-success/50 focus-visible:ring-success focus-visible:ring-offset-2"
+                            : "border-destructive/50 focus-visible:ring-destructive focus-visible:ring-offset-2"
+                        )}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Button 
+                  type="submit" 
+                  className={cn(
+                    "w-full",
+                    editTransaction.type === "income"
+                      ? "bg-success hover:bg-success/90 text-success-foreground"
+                      : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  )}
+                  disabled={isSubmitting}
+                >
+                  Salvar alterações
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <AlertDialog
+            open={isDeleteDialogOpen}
+            onOpenChange={(open) => {
+              setIsDeleteDialogOpen(open);
+              if (!open) {
+                setDeleteTarget(null);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir transação</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir
+                  {deleteTarget ? ` "${deleteTarget.description}"` : " esta transação"}? Essa ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="hover:bg-primary hover:text-primary-foreground">
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  onClick={() => deleteTarget && handleDelete(deleteTarget.id)}
+                  disabled={isSubmitting || !deleteTarget}
+                >
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </PageHeader>
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-3 mb-8">
           <StatCard
             title="Saldo Total"
-            value={formatCurrency(balance)}
+            value={formatCurrency(summary.balance)}
             icon={<Wallet className="h-5 w-5" />}
-            variant={balance >= 0 ? "success" : "destructive"}
+            variant={summary.balance >= 0 ? "success" : "destructive"}
           />
           <StatCard
             title="Total de Entradas"
-            value={formatCurrency(totalIncome)}
+            value={formatCurrency(summary.income)}
             icon={<TrendingUp className="h-5 w-5" />}
             variant="success"
           />
           <StatCard
             title="Total de Saídas"
-            value={formatCurrency(totalExpense)}
+            value={formatCurrency(summary.expense)}
             icon={<TrendingDown className="h-5 w-5" />}
             variant="destructive"
           />
@@ -347,11 +597,12 @@ export default function CashFlow() {
                 <TableHead>Categoria</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <AnimatePresence>
-                {filteredTransactions.map((transaction, index) => (
+                {pagedTransactions.map((transaction, index) => (
                   <motion.tr
                     key={transaction.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -390,12 +641,102 @@ export default function CashFlow() {
                       {transaction.type === "income" ? "+" : "-"}
                       {formatCurrency(transaction.amount)}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(transaction)}
+                          className="text-green-number hover:text-green-number hover:bg-primary/10"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openDeleteDialog(transaction)}
+                          disabled={isSubmitting}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </motion.tr>
                 ))}
               </AnimatePresence>
+              {!isLoading && transactions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhuma transação encontrada.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
+        {totalCount > 0 && (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>Mostrando {pagedTransactions.length} de {totalCount}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span>Por página</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(value) => setPageSize(Number(value))}
+                  >
+                    <SelectTrigger className="h-8 w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[5, 10, 20, 50].map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <span>Página {currentPage} de {totalPages}</span>
+              </div>
+            </div>
+            <div className="flex justify-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </motion.div>
     </AppLayout>
   );

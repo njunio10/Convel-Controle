@@ -1,19 +1,61 @@
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, StatCard } from "@/components/ui/page-components";
 import { Wallet, Users, UserPlus, TrendingUp, ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { mockTransactions, mockClients, mockLeads, leadStatusLabels, leadStatusColors } from "@/data/mockData";
+import { leadStatusLabels, leadStatusColors } from "@/data/leadStatus";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { clientsApi, leadsApi, transactionsApi } from "@/lib/api";
+import type { Client, Lead, Transaction } from "@/types";
 
 const Index = () => {
-  const totalIncome = mockTransactions
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const normalizeTransaction = (transaction: Transaction): Transaction => ({
+    ...transaction,
+    date: new Date(transaction.date),
+    createdAt: new Date(transaction.createdAt),
+  });
+
+  const normalizeLead = (lead: Lead): Lead => ({
+    ...lead,
+    createdAt: new Date(lead.createdAt),
+    updatedAt: new Date(lead.updatedAt),
+  });
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      try {
+        const [transactionsData, clientsData, leadsData] = await Promise.all([
+          transactionsApi.getAll(),
+          clientsApi.getAll(),
+          leadsApi.getAll(),
+        ]);
+        setTransactions(transactionsData.map(normalizeTransaction));
+        setClients(clientsData);
+        setLeads(leadsData.map(normalizeLead));
+      } catch (error) {
+        console.error("Erro ao carregar dashboard:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadDashboard();
+  }, []);
+
+  const totalIncome = transactions
     .filter((t) => t.type === "income")
     .reduce((acc, t) => acc + t.amount, 0);
 
-  const totalExpense = mockTransactions
+  const totalExpense = transactions
     .filter((t) => t.type === "expense")
     .reduce((acc, t) => acc + t.amount, 0);
 
@@ -26,9 +68,9 @@ const Index = () => {
     }).format(value);
   };
 
-  const recentTransactions = mockTransactions.slice(0, 5);
-  const newLeads = mockLeads.filter((l) => l.status === "novo").length;
-  const convertedLeads = mockLeads.filter((l) => l.status === "convertido").length;
+  const recentTransactions = transactions.slice(0, 3);
+  const newLeads = leads.filter((l) => l.status === "novo").length;
+  const convertedLeads = leads.filter((l) => l.status === "convertido").length;
 
   return (
     <AppLayout>
@@ -53,13 +95,13 @@ const Index = () => {
           />
           <StatCard
             title="Total de Clientes"
-            value={mockClients.length}
+            value={clients.length}
             icon={<Users className="h-5 w-5" />}
-            description={`${mockClients.filter((c) => c.origin === "indicacao").length} por indicação`}
+            description={`${clients.filter((c) => c.origin === "indicacao").length} por indicação`}
           />
           <StatCard
             title="Leads Ativos"
-            value={mockLeads.length}
+            value={leads.length}
             icon={<UserPlus className="h-5 w-5" />}
             description={`${newLeads} novos, ${convertedLeads} convertidos`}
           />
@@ -85,42 +127,49 @@ const Index = () => {
               </Link>
             </div>
             <div className="space-y-3">
-              {recentTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                        transaction.type === "income"
-                          ? "bg-success/10 text-green-number"
-                          : "bg-destructive/10 text-destructive"
+              {isLoading && (
+                <div className="text-sm text-muted-foreground">Carregando transações...</div>
+              )}
+              {!isLoading && recentTransactions.length === 0 && (
+                <div className="text-sm text-muted-foreground">Nenhuma transação registrada.</div>
+              )}
+              {!isLoading &&
+                recentTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          transaction.type === "income"
+                            ? "bg-success/10 text-green-number"
+                            : "bg-destructive/10 text-destructive"
+                        }`}
+                      >
+                        {transaction.type === "income" ? (
+                          <ArrowDownLeft className="h-4 w-4" />
+                        ) : (
+                          <ArrowUpRight className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{transaction.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(transaction.date, "dd MMM", { locale: ptBR })}
+                        </p>
+                      </div>
+                    </div>
+                    <p
+                      className={`text-sm font-semibold ${
+                        transaction.type === "income" ? "text-green-number" : "text-destructive"
                       }`}
                     >
-                      {transaction.type === "income" ? (
-                        <ArrowDownLeft className="h-4 w-4" />
-                      ) : (
-                        <ArrowUpRight className="h-4 w-4" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{transaction.description}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(transaction.date, "dd MMM", { locale: ptBR })}
-                      </p>
-                    </div>
+                      {transaction.type === "income" ? "+" : "-"}
+                      {formatCurrency(transaction.amount)}
+                    </p>
                   </div>
-                  <p
-                    className={`text-sm font-semibold ${
-                      transaction.type === "income" ? "text-green-number" : "text-destructive"
-                    }`}
-                  >
-                    {transaction.type === "income" ? "+" : "-"}
-                    {formatCurrency(transaction.amount)}
-                  </p>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
 
@@ -135,27 +184,32 @@ const Index = () => {
               </Link>
             </div>
             <div className="space-y-3">
-              {mockLeads.slice(0, 5).map((lead) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-green-number">
-                      <UserPlus className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{lead.name}</p>
-                      <p className="text-xs text-muted-foreground">{lead.email}</p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full font-medium border ${leadStatusColors[lead.status]}`}
+              {isLoading && <div className="text-sm text-muted-foreground">Carregando leads...</div>}
+              {!isLoading && leads.length === 0 && (
+                <div className="text-sm text-muted-foreground">Nenhum lead registrado.</div>
+              )}
+              {!isLoading &&
+                leads.slice(0, 3).map((lead) => (
+                  <div
+                    key={lead.id}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
                   >
-                    {leadStatusLabels[lead.status]}
-                  </span>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-green-number">
+                        <UserPlus className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{lead.name}</p>
+                        <p className="text-xs text-muted-foreground">{lead.email}</p>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-medium border ${leadStatusColors[lead.status]}`}
+                    >
+                      {leadStatusLabels[lead.status]}
+                    </span>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
