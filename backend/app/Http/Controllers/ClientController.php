@@ -68,7 +68,7 @@ class ClientController extends Controller
             'name' => [$presence, 'string', 'max:255'],
             'responsibleName' => $responsibleRule,
             'responsible_name' => $responsibleSnakeRule,
-            'email' => [$presence, 'email', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
             'phone' => [$presence, 'string', 'max:50'],
             'origin' => [$presence, 'in:promocao,indicacao,evento,redes_sociais,site,outro'],
             'referredBy' => [$isCreate ? 'nullable' : 'sometimes', 'nullable', 'string', 'max:255'],

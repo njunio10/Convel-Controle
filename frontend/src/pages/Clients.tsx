@@ -354,7 +354,6 @@ export default function Clients() {
                       value={newClient.email}
                       onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
                       placeholder="email@exemplo.com"
-                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -494,7 +493,6 @@ export default function Clients() {
                       type="email"
                       value={editClient.email}
                       onChange={(e) => setEditClient({ ...editClient, email: e.target.value })}
-                      required
                     />
                   </div>
                   <div className="space-y-2">

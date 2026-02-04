@@ -391,7 +391,6 @@ export default function Leads() {
                       value={newLead.email}
                       onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
                       placeholder="email@exemplo.com"
-                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -516,7 +515,6 @@ export default function Leads() {
                       type="email"
                       value={editLead.email}
                       onChange={(e) => setEditLead({ ...editLead, email: e.target.value })}
-                      required
                     />
                   </div>
                   <div className="space-y-2">
