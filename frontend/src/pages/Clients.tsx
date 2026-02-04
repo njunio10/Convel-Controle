@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, EmptyState } from "@/components/ui/page-components";
 import { Button } from "@/components/ui/button";
@@ -62,8 +63,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function Clients() {
   const { toast } = useToast();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -113,6 +113,22 @@ export default function Clients() {
     }).format(value);
   };
 
+  const normalizeClient = (client: Client): Client => ({
+    ...client,
+    createdAt: new Date(client.createdAt),
+  });
+
+  // Usar React Query para carregar clientes
+  const { data: clientsData = [], isLoading } = useQuery({
+    queryKey: ["clients"],
+    queryFn: async () => {
+      const data = await clientsApi.getAll();
+      return data.map(normalizeClient);
+    },
+  });
+
+  const clients = clientsData as Client[];
+
   const filteredClients = clients.filter(
     (client) =>
       client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -126,22 +142,76 @@ export default function Clients() {
     currentPage * pageSize
   );
 
-  const normalizeClient = (client: Client): Client => ({
-    ...client,
-    createdAt: new Date(client.createdAt),
+  // Mutations para criar, atualizar e deletar
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<Client, "id" | "createdAt">) => clientsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setNewClient({
+        name: "",
+        responsibleName: "",
+        email: "",
+        phone: "",
+        origin: "" as ClientOrigin,
+        referredBy: "",
+        monthlyFee: "",
+        notes: "",
+      });
+      setIsDialogOpen(false);
+      toast({
+        title: "Cliente cadastrado",
+        description: "O cliente foi adicionado com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao adicionar cliente",
+        description: "Verifique os dados e tente novamente.",
+        variant: "destructive",
+      });
+    },
   });
 
-  const loadClients = async () => {
-    setIsLoading(true);
-    try {
-      const data = await clientsApi.getAll();
-      setClients(data.map(normalizeClient));
-    } catch (error) {
-      console.error("Erro ao carregar clientes:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Client> }) =>
+      clientsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setIsViewDialogOpen(false);
+      setSelectedClient(null);
+      toast({
+        title: "Cliente atualizado",
+        description: "As alterações foram salvas com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao atualizar cliente",
+        description: "Verifique os dados e tente novamente.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => clientsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      toast({
+        title: "Cliente excluído",
+        description: "O cliente foi removido com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao excluir cliente",
+        description: "Não foi possível remover o cliente.",
+        variant: "destructive",
+      });
+    },
+  });
 
   useEffect(() => {
     setCurrentPage(1);
@@ -157,7 +227,7 @@ export default function Clients() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await clientsApi.create({
+      await createMutation.mutateAsync({
         name: newClient.name,
         responsibleName: newClient.responsibleName,
         email: newClient.email,
@@ -167,29 +237,8 @@ export default function Clients() {
         monthlyFee: newClient.monthlyFee ? parseFloat(newClient.monthlyFee) : 0,
         notes: newClient.notes || undefined,
       });
-      toast({
-        title: "Cliente cadastrado",
-        description: "O cliente foi adicionado com sucesso.",
-      });
-      setNewClient({
-        name: "",
-        responsibleName: "",
-        email: "",
-        phone: "",
-        origin: "" as ClientOrigin,
-        referredBy: "",
-        monthlyFee: "",
-        notes: "",
-      });
-      setIsDialogOpen(false);
-      await loadClients();
     } catch (error) {
       console.error("Erro ao criar cliente:", error);
-      toast({
-        title: "Erro ao adicionar cliente",
-        description: "Verifique os dados e tente novamente.",
-        variant: "destructive",
-      });
     } finally {
       setIsSubmitting(false);
     }
@@ -216,30 +265,22 @@ export default function Clients() {
     if (!selectedClient) return;
     setIsSubmitting(true);
     try {
-      await clientsApi.update(selectedClient.id, {
-        name: editClient.name,
-        responsibleName: editClient.responsibleName,
-        email: editClient.email,
-        phone: editClient.phone,
-        origin: editClient.origin,
-        referredBy: editClient.origin === "indicacao" ? editClient.referredBy || undefined : undefined,
-        monthlyFee: editClient.monthlyFee ? parseFloat(editClient.monthlyFee) : 0,
-        notes: editClient.notes || undefined,
-      });
-      toast({
-        title: "Cliente atualizado",
-        description: "As alterações foram salvas com sucesso.",
+      await updateMutation.mutateAsync({
+        id: selectedClient.id,
+        data: {
+          name: editClient.name,
+          responsibleName: editClient.responsibleName,
+          email: editClient.email,
+          phone: editClient.phone,
+          origin: editClient.origin,
+          referredBy: editClient.origin === "indicacao" ? editClient.referredBy || undefined : undefined,
+          monthlyFee: editClient.monthlyFee ? parseFloat(editClient.monthlyFee) : 0,
+          notes: editClient.notes || undefined,
+        },
       });
       setIsEditMode(false);
-      setIsViewDialogOpen(false);
-      await loadClients();
     } catch (error) {
       console.error("Erro ao atualizar cliente:", error);
-      toast({
-        title: "Erro ao atualizar cliente",
-        description: "Verifique os dados e tente novamente.",
-        variant: "destructive",
-      });
     } finally {
       setIsSubmitting(false);
     }
@@ -253,29 +294,14 @@ export default function Clients() {
   const handleDelete = async (clientId: string) => {
     setIsSubmitting(true);
     try {
-      await clientsApi.delete(clientId);
-      setIsDeleteDialogOpen(false);
-      setDeleteTarget(null);
-      toast({
-        title: "Cliente removido",
-        description: "O cliente foi removido com sucesso.",
-      });
-      await loadClients();
+      await deleteMutation.mutateAsync(clientId);
     } catch (error) {
       console.error("Erro ao remover cliente:", error);
-      toast({
-        title: "Erro ao remover cliente",
-        description: "Tente novamente em instantes.",
-        variant: "destructive",
-      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    void loadClients();
-  }, []);
 
   return (
     <AppLayout>

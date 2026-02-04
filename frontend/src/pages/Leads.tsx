@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, EmptyState, StatCard } from "@/components/ui/page-components";
 import { Button } from "@/components/ui/button";
@@ -69,8 +70,7 @@ import { cn } from "@/lib/utils";
 
 export default function Leads() {
   const { toast } = useToast();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -102,6 +102,33 @@ export default function Leads() {
     status: "novo" as LeadStatus,
   });
 
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const normalizeLead = (lead: Lead): Lead => ({
+    ...lead,
+    createdAt: new Date(lead.createdAt),
+    updatedAt: new Date(lead.updatedAt),
+  });
+
+  // Usar React Query para carregar leads
+  const { data: leadsData = [], isLoading } = useQuery({
+    queryKey: ["leads"],
+    queryFn: async () => {
+      const data = await leadsApi.getAll();
+      return data.map(normalizeLead);
+    },
+  });
+
+  const leads = leadsData as Lead[];
+
   const filteredLeads = leads.filter((lead) => {
     const matchesSearch =
       lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -124,52 +151,11 @@ export default function Leads() {
     perdido: leads.filter((l) => l.status === "perdido").length,
   };
 
-  const formatPhone = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    if (digits.length <= 10) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-    }
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  };
-
-  const normalizeLead = (lead: Lead): Lead => ({
-    ...lead,
-    createdAt: new Date(lead.createdAt),
-    updatedAt: new Date(lead.updatedAt),
-  });
-
-  const loadLeads = async () => {
-    setIsLoading(true);
-    try {
-      const data = await leadsApi.getAll();
-      setLeads(data.map(normalizeLead));
-    } catch (error) {
-      console.error("Erro ao carregar leads:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      await leadsApi.create({
-        name: newLead.name,
-        responsibleName: newLead.responsibleName,
-        email: newLead.email,
-        phone: newLead.phone,
-        status: "novo",
-        origin: newLead.origin,
-        referredBy: newLead.origin === "indicacao" ? newLead.referredBy || undefined : undefined,
-        notes: newLead.notes || undefined,
-      });
-      toast({
-        title: "Lead cadastrado",
-        description: "O lead foi adicionado com sucesso.",
-      });
+  // Mutations para criar, atualizar e deletar
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<Lead, "id" | "createdAt" | "updatedAt">) => leadsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
       setNewLead({
         name: "",
         responsibleName: "",
@@ -180,14 +166,97 @@ export default function Leads() {
         notes: "",
       });
       setIsDialogOpen(false);
-      await loadLeads();
-    } catch (error) {
-      console.error("Erro ao criar lead:", error);
+      toast({
+        title: "Lead cadastrado",
+        description: "O lead foi adicionado com sucesso.",
+      });
+    },
+    onError: () => {
       toast({
         title: "Erro ao adicionar lead",
         description: "Verifique os dados e tente novamente.",
         variant: "destructive",
       });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Lead> }) =>
+      leadsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setIsViewDialogOpen(false);
+      setSelectedLead(null);
+      setIsEditMode(false);
+      toast({
+        title: "Lead atualizado",
+        description: "As alterações foram salvas com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao atualizar lead",
+        description: "Verifique os dados e tente novamente.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: LeadStatus }) =>
+      leadsApi.updateStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast({
+        title: "Status atualizado",
+        description: "O status do lead foi alterado com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao atualizar status",
+        description: "Não foi possível alterar o status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => leadsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      toast({
+        title: "Lead excluído",
+        description: "O lead foi removido com sucesso.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao excluir lead",
+        description: "Não foi possível remover o lead.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await createMutation.mutateAsync({
+        name: newLead.name,
+        responsibleName: newLead.responsibleName,
+        email: newLead.email,
+        phone: newLead.phone,
+        status: "novo",
+        origin: newLead.origin,
+        referredBy: newLead.origin === "indicacao" ? newLead.referredBy || undefined : undefined,
+        notes: newLead.notes || undefined,
+      });
+    } catch (error) {
+      console.error("Erro ao criar lead:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -216,30 +285,22 @@ export default function Leads() {
 
     setIsSubmitting(true);
     try {
-      await leadsApi.update(selectedLead.id, {
-        name: editLead.name,
-        responsibleName: editLead.responsibleName,
-        email: editLead.email,
-        phone: editLead.phone,
-        origin: editLead.origin,
-        referredBy: editLead.origin === "indicacao" ? editLead.referredBy || undefined : undefined,
-        notes: editLead.notes || undefined,
-        status: editLead.status,
-      });
-      toast({
-        title: "Lead atualizado",
-        description: "As alterações foram salvas com sucesso.",
+      await updateMutation.mutateAsync({
+        id: selectedLead.id,
+        data: {
+          name: editLead.name,
+          responsibleName: editLead.responsibleName,
+          email: editLead.email,
+          phone: editLead.phone,
+          origin: editLead.origin,
+          referredBy: editLead.origin === "indicacao" ? editLead.referredBy || undefined : undefined,
+          notes: editLead.notes || undefined,
+          status: editLead.status,
+        },
       });
       setIsEditMode(false);
-      setIsViewDialogOpen(false);
-      await loadLeads();
     } catch (error) {
       console.error("Erro ao atualizar lead:", error);
-      toast({
-        title: "Erro ao atualizar lead",
-        description: "Verifique os dados e tente novamente.",
-        variant: "destructive",
-      });
     } finally {
       setIsSubmitting(false);
     }
@@ -253,25 +314,21 @@ export default function Leads() {
   const handleDelete = async (leadId: string) => {
     setIsSubmitting(true);
     try {
-      await leadsApi.delete(leadId);
-      await loadLeads();
-      setIsDeleteDialogOpen(false);
-      setDeleteTarget(null);
+      await deleteMutation.mutateAsync(leadId);
     } catch (error) {
       console.error("Erro ao excluir lead:", error);
-      toast({
-        title: "Erro ao excluir lead",
-        description: "Tente novamente em alguns instantes.",
-        variant: "destructive",
-      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    void loadLeads();
-  }, []);
+  const handleStatusChange = async (leadId: string, status: LeadStatus) => {
+    try {
+      await updateStatusMutation.mutateAsync({ id: leadId, status });
+    } catch (error) {
+      console.error("Erro ao alterar status:", error);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage(1);

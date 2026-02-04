@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, StatCard } from "@/components/ui/page-components";
 import { Wallet, Users, UserPlus, TrendingUp, ArrowUpRight, ArrowDownLeft } from "lucide-react";
@@ -12,44 +12,39 @@ import { clientsApi, leadsApi, transactionsApi } from "@/lib/api";
 import type { Client, Lead, Transaction } from "@/types";
 
 const Index = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const normalizeTransaction = (transaction: Transaction): Transaction => ({
-    ...transaction,
-    date: new Date(transaction.date),
-    createdAt: new Date(transaction.createdAt),
+  // Usar React Query para cachear e gerenciar os dados
+  const { data: transactionsData = [], isLoading: isLoadingTransactions } = useQuery({
+    queryKey: ["transactions"],
+    queryFn: async () => {
+      const data = await transactionsApi.getAll();
+      return data.map((transaction: Transaction) => ({
+        ...transaction,
+        date: new Date(transaction.date),
+        createdAt: new Date(transaction.createdAt),
+      }));
+    },
   });
 
-  const normalizeLead = (lead: Lead): Lead => ({
-    ...lead,
-    createdAt: new Date(lead.createdAt),
-    updatedAt: new Date(lead.updatedAt),
+  const { data: clients = [], isLoading: isLoadingClients } = useQuery({
+    queryKey: ["clients"],
+    queryFn: () => clientsApi.getAll(),
   });
 
-  useEffect(() => {
-    const loadDashboard = async () => {
-      setIsLoading(true);
-      try {
-        const [transactionsData, clientsData, leadsData] = await Promise.all([
-          transactionsApi.getAll(),
-          clientsApi.getAll(),
-          leadsApi.getAll(),
-        ]);
-        setTransactions(transactionsData.map(normalizeTransaction));
-        setClients(clientsData);
-        setLeads(leadsData.map(normalizeLead));
-      } catch (error) {
-        console.error("Erro ao carregar dashboard:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const { data: leadsData = [], isLoading: isLoadingLeads } = useQuery({
+    queryKey: ["leads"],
+    queryFn: async () => {
+      const data = await leadsApi.getAll();
+      return data.map((lead: Lead) => ({
+        ...lead,
+        createdAt: new Date(lead.createdAt),
+        updatedAt: new Date(lead.updatedAt),
+      }));
+    },
+  });
 
-    void loadDashboard();
-  }, []);
+  const isLoading = isLoadingTransactions || isLoadingClients || isLoadingLeads;
+  const transactions = transactionsData as Transaction[];
+  const leads = leadsData as Lead[];
 
   const totalIncome = transactions
     .filter((t) => t.type === "income")

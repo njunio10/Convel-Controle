@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader, StatCard } from "@/components/ui/page-components";
 import { Button } from "@/components/ui/button";
@@ -60,16 +61,14 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { Transaction, TransactionType } from "@/types";
-import { transactionsApi } from "@/lib/api";
+import { transactionsApi, type TransactionsQuery } from "@/lib/api";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export default function CashFlow() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 });
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -94,7 +93,7 @@ export default function CashFlow() {
     category: "",
   });
 
-  const buildQuery = () => ({
+  const buildQuery = (): TransactionsQuery => ({
     type: filterType === "all" ? undefined : (filterType as TransactionType),
     startDate: startDate ? format(startDate, "yyyy-MM-dd") : undefined,
     endDate: endDate ? format(endDate, "yyyy-MM-dd") : undefined,
@@ -106,6 +105,25 @@ export default function CashFlow() {
     createdAt: new Date(transaction.createdAt),
   });
 
+  // Usar React Query para carregar transações e resumo
+  const query = buildQuery();
+  const queryKey = ["transactions", query];
+  const summaryKey = ["transactions", "summary", query];
+
+  const { data: transactionsData = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const data = await transactionsApi.getAll(query);
+      return data.map(normalizeTransaction);
+    },
+  });
+
+  const { data: summary = { income: 0, expense: 0, balance: 0 } } = useQuery({
+    queryKey: summaryKey,
+    queryFn: () => transactionsApi.getSummary(query),
+  });
+
+  const transactions = transactionsData as Transaction[];
   const totalCount = transactions.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const pagedTransactions = transactions.slice(
@@ -113,37 +131,46 @@ export default function CashFlow() {
     currentPage * pageSize
   );
 
-  const loadTransactions = async () => {
-    setIsLoading(true);
-    try {
-      const query = buildQuery();
-      const [data, summaryData] = await Promise.all([
-        transactionsApi.getAll(query),
-        transactionsApi.getSummary(query),
-      ]);
-      setTransactions(data.map(normalizeTransaction));
-      setSummary(summaryData);
-    } catch (error) {
-      console.error("Erro ao carregar transações:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Mutations para criar, atualizar e deletar
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<Transaction, "id" | "createdAt">) => transactionsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      setNewTransaction({ description: "", amount: "", type: "income", category: "" });
+      setIsDialogOpen(false);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Transaction> }) =>
+      transactionsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      setIsEditDialogOpen(false);
+      setEditingTransaction(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => transactionsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await transactionsApi.create({
+      await createMutation.mutateAsync({
         description: newTransaction.description,
         amount: parseFloat(newTransaction.amount),
         type: newTransaction.type,
         category: newTransaction.category,
         date: new Date(),
       });
-      setNewTransaction({ description: "", amount: "", type: "income", category: "" });
-      setIsDialogOpen(false);
-      await loadTransactions();
     } catch (error) {
       console.error("Erro ao criar transação:", error);
     } finally {
@@ -156,15 +183,15 @@ export default function CashFlow() {
     if (!editingTransaction) return;
     setIsSubmitting(true);
     try {
-      await transactionsApi.update(editingTransaction.id, {
-        description: editTransaction.description,
-        amount: parseFloat(editTransaction.amount),
-        type: editTransaction.type,
-        category: editTransaction.category,
+      await updateMutation.mutateAsync({
+        id: editingTransaction.id,
+        data: {
+          description: editTransaction.description,
+          amount: parseFloat(editTransaction.amount),
+          type: editTransaction.type,
+          category: editTransaction.category,
+        },
       });
-      setIsEditDialogOpen(false);
-      setEditingTransaction(null);
-      await loadTransactions();
     } catch (error) {
       console.error("Erro ao atualizar transação:", error);
     } finally {
@@ -191,10 +218,7 @@ export default function CashFlow() {
   const handleDelete = async (transactionId: string) => {
     setIsSubmitting(true);
     try {
-      await transactionsApi.delete(transactionId);
-      await loadTransactions();
-      setIsDeleteDialogOpen(false);
-      setDeleteTarget(null);
+      await deleteMutation.mutateAsync(transactionId);
     } catch (error) {
       console.error("Erro ao excluir transação:", error);
     } finally {
@@ -213,10 +237,6 @@ export default function CashFlow() {
     setStartDate(undefined);
     setEndDate(undefined);
   };
-
-  useEffect(() => {
-    void loadTransactions();
-  }, [filterType, startDate, endDate]);
 
   useEffect(() => {
     setCurrentPage(1);
