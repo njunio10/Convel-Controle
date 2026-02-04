@@ -11,17 +11,36 @@ class AuthController extends Controller
 {
     public function login(Request $request)
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        try {
+            $credentials = $request->validate([
+                'email' => ['required', 'email'],
+                'password' => ['required', 'string'],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Dados inválidos.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
 
         $user = User::where('email', $credentials['email'])->first();
 
-        if (!$user || !Hash::check($credentials['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['Credenciais inválidas.'],
-            ]);
+        if (!$user) {
+            return response()->json([
+                'message' => 'Credenciais inválidas.',
+                'errors' => [
+                    'email' => ['Email ou senha inválidos.'],
+                ],
+            ], 401);
+        }
+
+        if (!Hash::check($credentials['password'], $user->password)) {
+            return response()->json([
+                'message' => 'Credenciais inválidas.',
+                'errors' => [
+                    'email' => ['Email ou senha inválidos.'],
+                ],
+            ], 401);
         }
 
         $token = $user->createToken('frontend')->plainTextToken;
