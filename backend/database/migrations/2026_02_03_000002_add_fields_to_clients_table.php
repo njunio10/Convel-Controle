@@ -8,10 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('clients', function (Blueprint $table) {
-            $table->string('responsible_name')->nullable()->after('name');
-            $table->decimal('monthly_fee', 12, 2)->nullable()->after('referred_by');
-        });
+        if (Schema::hasTable('clients')) {
+            Schema::table('clients', function (Blueprint $table) {
+                if (!Schema::hasColumn('clients', 'responsible_name')) {
+                    $table->string('responsible_name')->nullable()->after('name');
+                }
+                if (!Schema::hasColumn('clients', 'monthly_fee')) {
+                    $table->decimal('monthly_fee', 12, 2)->nullable()->after('referred_by');
+                }
+            });
+        }
     }
 
     public function down(): void

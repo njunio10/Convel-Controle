@@ -8,11 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('leads', function (Blueprint $table) {
-            $table->string('responsible_name')->after('name');
-            $table->string('origin', 30)->default('outro')->after('phone');
-            $table->string('referred_by')->nullable()->after('origin');
-        });
+        if (Schema::hasTable('leads')) {
+            Schema::table('leads', function (Blueprint $table) {
+                if (!Schema::hasColumn('leads', 'responsible_name')) {
+                    $table->string('responsible_name')->after('name');
+                }
+                if (!Schema::hasColumn('leads', 'origin')) {
+                    $table->string('origin', 30)->default('outro')->after('phone');
+                }
+                if (!Schema::hasColumn('leads', 'referred_by')) {
+                    $table->string('referred_by')->nullable()->after('origin');
+                }
+            });
+        }
     }
 
     public function down(): void
