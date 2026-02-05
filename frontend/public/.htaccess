@@ -1,0 +1,21 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  
+  # Não redirecionar arquivos estáticos (assets, imagens, etc)
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule . - [L]
+  
+  # Não redirecionar diretórios
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule . - [L]
+  
+  # Não redirecionar requisições para a API
+  RewriteCond %{REQUEST_URI} ^/api/
+  RewriteRule . - [L]
+  
+  # Redirecionar todas as outras requisições para index.html (SPA routing)
+  # Isso permite que o React Router gerencie as rotas no lado do cliente
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . index.html [L]
+</IfModule>
