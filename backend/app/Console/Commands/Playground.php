@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 
 final class Playground extends Command
 {
@@ -22,7 +23,8 @@ final class Playground extends Command
 
     public function handle(): void
     {
-        $password = Hash::make('convel>suflex123');
-        $this->info($password);
+        ds()->clear();
+        $response = Http::withHeaders(['access_token' => config('services.asaas.api_key')])->get(config('services.asaas.base_url').'/finance/balance'); 
+        ds($response->json());
     }
 }

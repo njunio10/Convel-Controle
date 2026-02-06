@@ -1,4 +1,4 @@
-import { LayoutDashboard, Wallet, Users, UserPlus, Settings } from "lucide-react";
+import { LayoutDashboard, Wallet, Users, UserPlus, Settings, ArrowDownUp } from "lucide-react";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/contexts/SidebarContext";
@@ -49,6 +49,9 @@ export function AppSidebar() {
               )}
               <SidebarNavLink to="/fluxo-caixa" icon={Wallet}>
                 Fluxo de Caixa
+              </SidebarNavLink>
+              <SidebarNavLink to="/asaas-financial" icon={ArrowDownUp}>
+                Entradas e Saídas
               </SidebarNavLink>
             </div>
 

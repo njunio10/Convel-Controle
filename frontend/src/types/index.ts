@@ -40,3 +40,64 @@ export interface Lead {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Tipos para integração com Asaas
+export interface AsaasPayment {
+  id: string;
+  customer: string;
+  billingType: string;
+  value: number;
+  netValue: number;
+  originalValue: number;
+  interestValue: number;
+  description: string;
+  status: string;
+  dueDate: string;
+  paymentDate?: string;
+  clientPaymentDate?: string;
+  installmentNumber?: number;
+  invoiceUrl?: string;
+  bankSlipUrl?: string;
+  transactionReceiptUrl?: string;
+  invoiceNumber?: string;
+  externalReference?: string;
+  deleted: boolean;
+  anticipated: boolean;
+  anticipable: boolean;
+  refunds?: any;
+  dateCreated: string;
+  creditDate?: string;
+  estimatedCreditDate?: string;
+  transactionReceiptUrl?: string;
+  nossoNumero?: string;
+  postalService?: boolean;
+}
+
+export interface AsaasFinancialSummary {
+  total_received: number;
+  total_pending: number;
+  total_overdue: number;
+  total_expected: number;
+}
+
+export interface AsaasFinancialData {
+  entries: {
+    received: {
+      data: AsaasPayment[];
+      total: number;
+      count: number;
+    };
+    pending: {
+      data: AsaasPayment[];
+      total: number;
+      count: number;
+    };
+    overdue: {
+      data: AsaasPayment[];
+      total: number;
+      count: number;
+    };
+  };
+  summary: AsaasFinancialSummary;
+  error?: string;
+}

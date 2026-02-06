@@ -11,6 +11,7 @@ const Index = lazy(() => import("./pages/Index"));
 const CashFlow = lazy(() => import("./pages/CashFlow"));
 const Clients = lazy(() => import("./pages/Clients"));
 const Leads = lazy(() => import("./pages/Leads"));
+const AsaasFinancial = lazy(() => import("./pages/AsaasFinancial"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
 
@@ -105,6 +106,16 @@ const App = () => (
                   <RequireAuth>
                     <Suspense fallback={<PageLoader />}>
                       <Leads />
+                    </Suspense>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/asaas-financial"
+                element={
+                  <RequireAuth>
+                    <Suspense fallback={<PageLoader />}>
+                      <AsaasFinancial />
                     </Suspense>
                   </RequireAuth>
                 }

@@ -190,6 +190,66 @@ export const transactionsApi = {
   },
 };
 
+// ==================== ASAAS ====================
+
+export interface AsaasPaymentsQuery {
+  customer?: string;
+  status?: string;
+  billing_type?: string;
+  start_date?: string;
+  end_date?: string;
+  due_date_from?: string;
+  due_date_to?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export const asaasApi = {
+  // Consultar pagamentos
+  getPayments: async (query?: AsaasPaymentsQuery): Promise<import('@/types').AsaasPayment[]> => {
+    const response = await api.get<ApiResponse<import('@/types').AsaasPayment[]>>('/asaas/payments', {
+      params: query,
+    });
+    return response.data.data;
+  },
+
+  // Consultar pagamento específico
+  getPayment: async (id: string): Promise<import('@/types').AsaasPayment> => {
+    const response = await api.get<ApiResponse<import('@/types').AsaasPayment>>(`/asaas/payments/${id}`);
+    return response.data.data;
+  },
+
+  // Consultar saldo
+  getBalance: async (): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>('/asaas/balance');
+    return response.data.data;
+  },
+
+  // Consultar financeiro completo (entradas e saídas)
+  getFinancial: async (query?: { start_date?: string; end_date?: string; due_date_from?: string; due_date_to?: string }): Promise<import('@/types').AsaasFinancialData> => {
+    const response = await api.get<ApiResponse<import('@/types').AsaasFinancialData>>('/asaas/financial', {
+      params: query,
+    });
+    return response.data.data;
+  },
+
+  // Consultar apenas entradas (recebimentos)
+  getEntries: async (query?: AsaasPaymentsQuery): Promise<import('@/types').AsaasPayment[]> => {
+    const response = await api.get<ApiResponse<import('@/types').AsaasPayment[]>>('/asaas/entries', {
+      params: query,
+    });
+    return response.data.data;
+  },
+
+  // Consultar apenas saídas (pagamentos pendentes)
+  getOutflows: async (query?: AsaasPaymentsQuery): Promise<import('@/types').AsaasPayment[]> => {
+    const response = await api.get<ApiResponse<import('@/types').AsaasPayment[]>>('/asaas/outflows', {
+      params: query,
+    });
+    return response.data.data;
+  },
+};
+
 // ==================== STATUS ====================
 
 export const statusApi = {
